@@ -1,19 +1,19 @@
 language: cpp
 
 os:
-  - linux
+  #- linux
   - osx
-osx_image: xcode7.3
+osx_image: xcode8
 
 env:
   matrix:
     # Uncomment when Travis upgraded "Ubuntu 12.04 LTS" to a newer version whose repo will have a more up-to-date libtorrent package
     #- lt_branch=dist gui=true
     #- lt_branch=dist gui=false
-    - lt_branch=RC_1_0 qt=5 gui=true
-    - lt_branch=RC_1_0 qt=5 gui=false
+    - lt_branch=RC_1_0 qt=5 gui=true qtroot=/usr/local/Cellar/qt5/5.7.0 QT_QMAKE=$qtroot/bin
+    #- lt_branch=RC_1_0 qt=5 gui=false
     - lt_branch=RC_1_0 qt=4 gui=true
-    - lt_branch=RC_1_0 qt=4 gui=false
+    #- lt_branch=RC_1_0 qt=4 gui=false
   global:
     - secure: "OI9CUjj4lTb0HwwIZU5PbECU3hLlAL6KC8KsbwohG8/O3j5fLcnmDsK4Ad9us5cC39sS11Jcd1kDP2qRcCuST/glVNhLkcjKkiQerOfd5nQ/qL4JYfz/1mfP5mdpz9jHKzpLUIG+TXkbSTjP6VVmsb5KPT+3pKEdRFZB+Pu9+J8="
     - coverity_branch: coverity_scan
@@ -42,12 +42,11 @@ dist: trusty
 addons:
   coverity_scan:
     project:
-      name: "qbittorrent/qBittorrent"
+      name: "okeatime/qBittorrent"
       description: "Build submitted via Travis CI"
     build_command_prepend: "./bootstrap.sh && ./configure $qbtconf"
     build_command: make
     branch_pattern: $coverity_branch
-    notification_email: sledgehammer999@qbittorrent.org
   apt:
     #sources:
     # sources list: https://github.com/travis-ci/apt-source-whitelist/blob/master/ubuntu.json
@@ -141,8 +140,15 @@ install:
       brew install "$HOME/hombebrew_cache/libtorrent-rasterbar.rb" ;
 
       # Qt
-      if [ "$qt" = 4 ]; then brew install qt && ln -s /usr/local/Cellar/qt/4.8.7_2/plugins /usr/local ; fi ;
-      if [ "$qt" = 5 ]; then brew install qt5 && brew link --force qt5 && ln -s /usr/local/Cellar/qt5/5.7.0/plugins /usr/local ; fi ;
+      if [ "$qt" = 4 ]; then brew install qt; fi ;
+      #if [ "$qt" = 5 ]; then brew install -v https://raw.githubusercontent.com/okeatime/homebrew-core/for_qbt/Formula/qt5.rb; fi ;
+      if [ "$qt" = 5 ]; then
+         brew install -v qt5;
+         find $qtroot/plugins -type file -exec chmod +w \{\} \; ;
+         find $qtroot/plugins -type file -exec install_name_tool -id \{\} \{\} \; ;
+         find $qtroot/lib -type file -exec chmod +w \{\} \; ;
+         find $qtroot/lib -type file -print | egrep "([^/]+).framework/Versions/[^/]+/\1$" | xargs -n 1 -I % install_name_tool -id % % ;
+      fi ;
 
       # ccache
       if [ "$TRAVIS_BRANCH" != "$coverity_branch" ]; then
@@ -152,6 +158,7 @@ install:
     fi
 
 script:
+  #- brew install -v https://raw.githubusercontent.com/okeatime/homebrew-core/qt57_qbt/Formula/qt57.rb
   - if [ "$TRAVIS_BRANCH" = "$coverity_branch" ]; then exit ; fi # skip usual build when running coverity scan
   - cd "$TRAVIS_BUILD_DIR" && ./bootstrap.sh && ./configure $qbtconf
   - |
@@ -165,8 +172,20 @@ script:
 after_success:
   - if [ "$gui" = true ]; then qbt_exe="qbittorrent" ; else qbt_exe="qbittorrent-nox" ; fi
   - if [ "$TRAVIS_OS_NAME" = "linux" ]; then cd "$qbt_path/bin" ; fi
-  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then cd "$TRAVIS_BUILD_DIR/src/" && macdeployqt "$qbt_exe.app" && cd "$qbt_exe.app/Contents/MacOS" ; fi
+  - if [ "$TRAVIS_OS_NAME" = "osx" ]; then cd "$TRAVIS_BUILD_DIR/src/" && $QT_QMAKE/macdeployqt "$qbt_exe.app" -dmg && cd "$qbt_exe.app/Contents/MacOS" ; fi
   - ./$qbt_exe --version
+  - cd "$TRAVIS_BUILD_DIR"
 
 after_script:
   - if [ "$use_ccache" = true ]; then ccache --show-stats ; fi
+
+deploy:
+  provider: releases
+  api_key:
+    secure: "fmSyQOEyu72swKaMQXzvIpE8Rk2uZ60Z2RfNkJaKtzc8Pepo0Sl4fTGQx2uqaRIOHb/Sx0EfoKnk4AwKIPiS++P2m5mj7A70TTTGu2uxAfrI8Mdu3lwl/hR5ip/6XcbN3y/BPubx5V+wy3iye2BTzEoifQZVrVpcwUtYdY3cvAmmDLOJPT3pgfsH345nUkxqYBhuhfuqjzavKXO/KsNtGiZ+Hju/t5+BWapQXVGVT0xWY6OAmvf4SObYDH4S3VWWYVurZYvojr7JiSOEy9s62kRNLi8sJu/hipznJm+p8QhV2NTevcVgUoO9h/Al82+EOd6OFL9OGu1uqLte6v/hC1WXhrxq2HHekcya7m68W/UgPibtbOzsqgXxk9W/dqX/r5H3bBm1KR7Xj8ftLjPUCJagNpzzSD2iwN0v1QV5sEXTL/nkquJpldS1cijdtS4AJDR73bnwjRSx9szMC/CCkh/aJS7BYctXxAW5SHLOL67pYR7TE1cs5zz8w+X+V8EvYUE0moJW214Z+YdJ6o1Omg+Z+fd6Nb/22sVsja4BdGVVgh2U6rn06/HglApA177hcuXxVUhiSdzEZ7XTRkRnU7qzITGGLM0ts8iCWvHiF0OEhCEbK9h/S9z8CbtHxbo0p6ckcAHtCJCzz62Fuggmk4pqifVaFJKFzXs2pLRwhCY="
+  file: src/qbittorrent.dmg
+  overwite: true
+  skip_cleanup: true
+  on:
+    tags: true
+
