@@ -33,7 +33,7 @@ notifications:
 cache:
   ccache: true
   directories:
-    - $HOME/hombebrew_cache
+    - $HOME/Library/Caches/Homebrew
 
 # opt-in Ubuntu Trusty
 sudo: required
